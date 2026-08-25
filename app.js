@@ -6,6 +6,7 @@ const express = require("express");
 const session = require("express-session");
 const passport = require("passport");
 const LocalStrategy = require('passport-local').Strategy;
+const bcrypt = require("bcryptjs");
 
 const pool = new Pool({
   connectionString: 'postgres://domradomski@localhost:5432/first_auth',
@@ -20,9 +21,12 @@ passport.use(
       if (!user) {
         return done(null, false, { message: "Incorrect username" });
       }
-      if (user.password !== password) {
-        return done(null, false, { message: "Incorrect password" });
-      }
+      const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+        // passwords do not match!
+        return done(null, false, { message: "Incorrect password" })
+        }
+
       return done(null, user);
     } catch(err) {
       return done(err);
@@ -74,15 +78,14 @@ app.get("/", (req, res) => res.render("index", {}));
 
 app.get("/sign-up", (req, res) => res.render("sign-up-form"));
 app.post("/sign-up", async (req, res, next) => {
-  try {
-    await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [
-      req.body.username,
-      req.body.password,
-    ]);
-    res.redirect("/");
-  } catch(err) {
-    return next(err);
-  }
+ try {
+  const hashedPassword = await bcrypt.hash(req.body.password, 10);
+  await pool.query("INSERT INTO users (username, password) VALUES ($1, $2)", [req.body.username, hashedPassword]);
+  res.redirect("/");
+ } catch (error) {
+    console.error(error);
+    next(error);
+   }
 });
 
 app.get("/log-out", (req, res, next) => {
